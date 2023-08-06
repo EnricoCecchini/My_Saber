@@ -1,4 +1,3 @@
-#include <ezButton.h>
 #include <FastLED.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
@@ -13,15 +12,13 @@ CRGB color = CRGB::Black;
 
 int nLeds = 144;
 
-const int onOfBTN_PIN = 12;
-const int changeColorBTN_PIN = 4;
-int changeColorBTN_STATE;
-int onOfBTN_STATE;
-int changeColorBTN_STATE_PREV;
-int onOfBTN_STATE_PREV;
-
-ezButton changeColorBTN(7);  // create ezButton object that attach to pin 7;
-ezButton onOfBTN(4);  // create ezButton object that attach to pin 4;
+// BUTTONS
+const int mainBTN_PIN = 12;
+int mainBTN_STATE;
+int mainBTN_STATE_PREV;
+const int auxBTN_PIN = 4;
+int auxBTN_STATE;
+int auxBTN_STATE_PREV;
 
 // Color List
 String COLORS[] = {"BLACK", "RED", "BLUE", "GREEN", "PURPLE", "YELLOW", "WHITE", "TEAL", "ORANGE"};
@@ -45,12 +42,15 @@ int rainbowSpeed = 10;
 
 // Manage On/Off saber
 bool isOn = 0;
-bool onOffButtonPressed = false;
-unsigned long onOffButtonPressStart = 0;
-unsigned long changeColorBTNPressStart = 0;
+bool mainButtonPressed = false;
+unsigned long mainButtonPressStart = 0;
 unsigned long timeDiff = 0;
 unsigned long currentTime = 0;
-bool longOnOffButtonPressDuration = 5000;
+int long mainButtonPressDuration = 5000;
+
+bool auxBTNPressed = false;
+unsigned long auxBTNPressStart = 0;
+int long auxBTNPressDuration = 5000;
 
 // Animation parameters
 int numMovingLeds = 4;
@@ -64,26 +64,61 @@ Adafruit_MPU6050 mpu;
 
 // FUNCTIONS
 
-// Check ON/OFF button is pressed
-void checkOnOffBTN () {
-    currentTime = millis();
-
+// Check AUX button
+void checkAuxButton() {
   // Update button states
-  onOfBTN_STATE_PREV = onOfBTN_STATE;
-  changeColorBTN_STATE_PREV = changeColorBTN_STATE;
+  auxBTN_STATE_PREV = auxBTN_STATE;
+  auxBTN_STATE = digitalRead(auxBTN_PIN);
 
   Serial.println(isOn);
-  Serial.println(String(onOfBTN_STATE_PREV) + " " + String(onOfBTN_STATE));
+  Serial.println("AUX BTN " + String(auxBTN_STATE_PREV) + " " + String(auxBTN_STATE));
+
+  // Check when AUX button is pressed
+  if (auxBTN_STATE_PREV == HIGH && auxBTN_STATE == HIGH) {
+      if (auxBTNPressStart == 0)
+        auxBTNPressStart = millis();
+        
+      auxBTNPressed = true;
+      Serial.println("Pressed " + String(auxBTNPressStart));
+  } else {
+    Serial.println("Pressed " + String(millis()));
+    
+    // If AUX button is released, after being pressed for <500 ms, make clash effect
+    // IF AUX button is released, after being pressed >1000s, change color
+    if (auxBTNPressStart != 0 && millis() - auxBTNPressStart < 500 && isOn) {
+      Serial.println("Clash!");
+      clashEffect();  
+    } else if (auxBTNPressStart != 0 && (millis() - auxBTNPressStart > 1000) && isOn) {
+      Serial.println("Changing Color after button press");
+      Serial.println(ledIndex);
+      changeColor();
+    } else {
+      auxBTNPressStart = 0;
+    }
+    Serial.println("Released");
+  }
+
+  delay(100);
+}
+
+// Check ON/OFF button is pressed
+void checkMainBTN () {
+  // Update button states
+  mainBTN_STATE_PREV = mainBTN_STATE;
+  auxBTN_STATE_PREV = auxBTN_STATE;
+
+//  Serial.println(isOn);
+//  Serial.println(String(mainBTN_STATE_PREV) + " " + String(mainBTN_STATE));
   
-  changeColorBTN_STATE = digitalRead(changeColorBTN_PIN);
-  onOfBTN_STATE = digitalRead(onOfBTN_PIN);
+//  auxBTN_STATE = digitalRead(auxBTN_PIN);
+  mainBTN_STATE = digitalRead(mainBTN_PIN);
   
   // Detect when ON/OFF button is pressed
-  if (onOfBTN_STATE_PREV == HIGH && onOfBTN_STATE == HIGH) {
-      if (onOffButtonPressStart == 0)
-        onOffButtonPressStart = millis();
+  if (mainBTN_STATE_PREV == HIGH && mainBTN_STATE == HIGH) {
+      if (mainButtonPressStart == 0)
+        mainButtonPressStart = millis();
         
-      onOffButtonPressed = true;
+      mainButtonPressed = true;
       Serial.println("Pressed");
 
       // If ON/OFF button is pressed AND saber is OFF, turn saber ON 
@@ -95,15 +130,15 @@ void checkOnOffBTN () {
   }
 
   // Detect when ON/OFF button is released
-  if (onOfBTN_STATE_PREV == LOW && onOfBTN_STATE == LOW) {
-      onOffButtonPressed = false;
+  if (mainBTN_STATE_PREV == LOW && mainBTN_STATE == LOW) {
+      mainButtonPressed = false;
       Serial.println("Released");
 
-      Serial.println("Time Difference = " + String(currentTime - onOffButtonPressStart));
+      Serial.println("Time Difference = " + String(currentTime - mainButtonPressStart));
 
       // If ON/OFF button was pressed less than 5 seconds, change effect
       // If ON/OFF button is pressed 5 seconds or more AND saber is ON, turn saber OFF
-      if (currentTime - onOffButtonPressStart < 5000 && isOn && onOffButtonPressStart > 0) {
+      if (currentTime - mainButtonPressStart < 5000 && isOn && mainButtonPressStart > 0) {
         Serial.println("Change effect");  
 
         if (effectIndex < 5) {
@@ -111,12 +146,12 @@ void checkOnOffBTN () {
         } else {
           effectIndex = 0;  
         }
-      } else if (onOffButtonPressStart > 0 && currentTime - onOffButtonPressStart >= 5000) {
+      } else if (mainButtonPressStart > 0 && currentTime - mainButtonPressStart >= 5000) {
         Serial.println("Turning Off after button press for 5 seconds");
         turnOffSaber();
       }
 
-      onOffButtonPressStart = 0;
+      mainButtonPressStart = 0;
   }
 }
 
@@ -144,7 +179,8 @@ void pulseEffect() {
         leds[i].fadeToBlackBy(maxBrightness - brightness);
       }  
       FastLED.show();
-      checkOnOffBTN();
+      checkAuxButton();
+      checkMainBTN();
       delay(pulseDuration / (maxBrightness - minBrightness) * pulseSpeed);
     }
 
@@ -155,7 +191,8 @@ void pulseEffect() {
         leds[i].fadeToBlackBy(maxBrightness - brightness);
       }  
       FastLED.show();
-      checkOnOffBTN();
+      checkAuxButton();
+      checkMainBTN();
       delay(pulseDuration / (maxBrightness - minBrightness) * pulseSpeed);
     }
 }
@@ -177,7 +214,8 @@ void clashEffect() {
   }
 
   FastLED.show();
-  checkOnOffBTN();
+  checkAuxButton();
+  checkMainBTN();
 }
 
 // Rainbow Effect Function
@@ -189,7 +227,8 @@ void rainbowEffect() {
       leds[j] = CHSV(j - (i*2), 255, 255);
     }
     FastLED.show();
-    checkOnOffBTN();
+    checkAuxButton();
+    checkMainBTN();
     
     delay(rainbowSpeed);
   }
@@ -260,9 +299,11 @@ void turnOnSaber() {
     leds[i] = color;
     FastLED.show();
 
-    if (isOn)
-      checkOnOffBTN();
-      
+    if (isOn){
+      checkMainBTN();
+      checkAuxButton();
+    }
+    
     delay(animationDuration);
   }
 
@@ -281,7 +322,7 @@ void turnOffSaber() {
   }
 
   isOn = 0;
-  onOffButtonPressed = 0;
+  mainButtonPressed = 0;
 }
 
 // Function to change lightsaber color when button is pressed
@@ -341,14 +382,11 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Starting...");
 
-  pinMode(changeColorBTN_PIN, INPUT_PULLUP);
-  pinMode(onOfBTN_PIN, INPUT_PULLUP);
+  pinMode(auxBTN_PIN, INPUT_PULLUP);
+  pinMode(mainBTN_PIN, INPUT_PULLUP);
 
-  changeColorBTN_STATE = digitalRead(changeColorBTN_PIN);
-  onOfBTN_STATE = digitalRead(onOfBTN_PIN);
-  
-  changeColorBTN.setDebounceTime(1); // set debounce time to 50 milliseconds
-  onOfBTN.setDebounceTime(50);
+  auxBTN_STATE = digitalRead(auxBTN_PIN);
+  mainBTN_STATE = digitalRead(mainBTN_PIN);
 
   FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(75);
@@ -372,37 +410,39 @@ void setup() {
 }
 
 void loop() {
-  changeColorBTN.loop(); // MUST call the loop() function first
-  onOfBTN.loop();
+  currentTime = millis();
 
-  // Check if On/OFF button is pressed
-  checkOnOffBTN();
+  // Check if MAIN button is pressed
+  checkMainBTN();
 
-  // Detect when AUX button is pressed
-  if (digitalRead(changeColorBTN_PIN) == HIGH && changeColorBTN_STATE == LOW && isOn) {
-    changeColorBTNPressStart = millis();
-    Serial.println("changeColorBTNPressStart");
-//    Serial.println("Changing Color after button press");
-//    Serial.println(ledIndex);
-//    changeColor();
-  } else if (digitalRead(changeColorBTN_PIN) == LOW && changeColorBTN_STATE == HIGH && !isOn) {
-    Serial.println("Cannot change color when saber is off");
-  }
+  // Check if AUX button is pressed
+  checkAuxButton();
 
-  // Detect when AUX button is released
-  if (digitalRead(onOfBTN_PIN) == HIGH && onOfBTN_STATE == LOW) {
-      if (changeColorBTNPressStart != 0 && (currentTime - changeColorBTNPressStart < 5000)) {
-        Serial.println("Clash!");
-        clashEffect();
-      } else if (changeColorBTNPressStart != 0 && (currentTime - changeColorBTNPressStart >= 5000)) {
-        //changeColorBTNPressStart = millis();
-        Serial.println("Changing Color after button press");
-        Serial.println(ledIndex);
-        changeColor();
-      }
-
-      //changeColorBTNPressStart = 0;
-  }
+//  // Detect when AUX button is pressed
+//  if (digitalRead(auxBTN_PIN) == HIGH && auxBTN_STATE == LOW && isOn) {
+//    auxBTNPressStart = millis();
+//    Serial.println("auxBTNPressStart");
+////    Serial.println("Changing Color after button press");
+////    Serial.println(ledIndex);
+////    changeColor();
+//  } else if (digitalRead(auxBTN_PIN) == LOW && auxBTN_STATE == HIGH && !isOn) {
+//    Serial.println("Cannot change color when saber is off");
+//  }
+//
+//  // Detect when AUX button is released
+//  if (digitalRead(mainBTN_PIN) == HIGH && mainBTN_STATE == LOW) {
+//      if (auxBTNPressStart != 0 && (currentTime - auxBTNPressStart < 5000)) {
+//        Serial.println("Clash!");
+//        clashEffect();
+//      } else if (auxBTNPressStart != 0 && (currentTime - auxBTNPressStart >= 5000)) {
+//        //auxBTNPressStart = millis();
+//        Serial.println("Changing Color after button press");
+//        Serial.println(ledIndex);
+//        changeColor();
+//      }
+//
+//      //auxBTNPressStart = 0;
+//  }
 
   // If saber is OFF, turn off lights
   // If saber is ON show selected effect
@@ -437,6 +477,7 @@ void loop() {
         break;
       default:
         //turnOnSaber();
+        
         //rainbowEffect();
         //Serial.println("Current Effect = " + EFFECTS[effectIndex]);
         break;
@@ -444,9 +485,9 @@ void loop() {
   }
 
   // Update ON/OFF button state
-  onOfBTN_STATE = digitalRead(onOfBTN_PIN);
-  changeColorBTN_STATE = digitalRead(changeColorBTN_PIN);
+  mainBTN_STATE = digitalRead(mainBTN_PIN);
+  auxBTN_STATE = digitalRead(auxBTN_PIN);
 
-//  Serial.println("onOfBTN_STATE: " + String(onOfBTN_STATE));
-//  Serial.println("changeColorBTN_STATE: " + String(changeColorBTN_STATE));
+//  Serial.println("mainBTN_STATE: " + String(mainBTN_STATE));
+//  Serial.println("auxBTN_STATE: " + String(auxBTN_STATE));
 }
