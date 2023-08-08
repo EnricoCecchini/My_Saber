@@ -18,6 +18,18 @@ const int auxBTN_PIN = 4;
 int auxBTN_STATE;
 int auxBTN_STATE_PREV;
 
+// MPU6050
+Adafruit_MPU6050 mpu;
+// Gyro
+const int rotationThreshold = 34;
+int prevGyroX = 0;
+int currentGyroX = 0;
+int prevGyroY = 0;
+int currentGyroY = 0;
+int prevGyroZ = 0;
+int currentGyroZ = 0;
+// Acceleration
+
 // Color List
 String COLORS[] = {"RED", "BLUE", "GREEN", "PURPLE", "YELLOW", "WHITE", "TEAL", "ORANGE"};
 int presetColors = 8;
@@ -318,14 +330,59 @@ void setup() {
   FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(75);
   
-  // Start Accelerometer;
+  // Start MPU6050;
   Wire.begin();
+  
+  // Try to initialize MPU6050!
+  if (!mpu.begin()) {
+    Serial.println("Failed to find Accelerometer");
+    while (1) {
+      delay(10);
+      if (mpu.begin())
+        break;
+    }
+  }
+  Serial.println("Accelerometer Found!");
+
+  // set gyro range to +- 500 deg/s
+  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
 
 }
 
 void loop() {
   currentTime = millis();
 
+  // Gyro event
+  sensors_event_t a, g, t;
+  mpu.getEvent(&a, &g, &t);
+
+  currentGyroX = g.gyro.x;
+  currentGyroY = g.gyro.y;
+  currentGyroZ = g.gyro.z;
+
+  // Print X, Y, Z rotation
+  if (abs(currentGyroX) > 20 )
+    Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
+  //delay(100);
+
+  // Twist to turn ON/OFF
+  if (abs(currentGyroX) >= rotationThreshold) {
+      if (!isOn) {
+        Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
+        Serial.println("Turning On with twist...");
+        turnOnSaber();
+        isOn = 1;
+      } else {
+        Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
+        Serial.println("Turning On with twist...");
+        turnOffSaber();
+        isOn = 0;
+      }
+  }
+
+  // Detect movement
+
+  // Detect Clash
 
   // Check if MAIN button is pressed
   checkMainBTN();
@@ -345,6 +402,5 @@ void loop() {
       default:
         break;
     }
-  }
-  
+  } 
 }
