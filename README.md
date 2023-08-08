@@ -13,13 +13,13 @@ Attempt at programming my own lightsaber and effects from scratch using an Ardui
 - Wire
 
 ## To Do
-[-] Turn ON saber
-[-] Turn OFF saber
-[-] Setup MAIN button to turn ON/OFF saber
-[-] Setup AUX button to change color
-[-] Change saber color
-[-] Change saber effect
-[-] Clash effect with AUX button
+[x] Turn ON saber
+[x] Turn OFF saber
+[x] Setup MAIN button to turn ON/OFF saber
+[x] Setup AUX button to change color
+[x] Change saber color
+[x] Change saber effect
+[x] Clash effect with AUX button
 [ ] Configure MPU6050
 [ ] Configure DFPlayer
 [ ] Detect swing
@@ -32,8 +32,8 @@ Attempt at programming my own lightsaber and effects from scratch using an Ardui
 [ ] Play clash sound
 
 ## Light Effects
-[-] Solid color
-[-] Pulse
+[x] Solid color
+[x] Pulse
 [ ] Rainbow
 [ ] Fire
 [ ] Clash (With Accelerometer)
