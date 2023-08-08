@@ -1,5 +1,3 @@
-// New version of My_Saber using counters instead of delays
-
 #include <FastLED.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
@@ -29,17 +27,26 @@ int ledChangeDuration = 3000;
 // Effect List
 String EFFECTS[] = {"SOLID", "PULSE", "RAINBOW", "FIRE"};
 int effectNumber = 4;
-int effectIndex = -1;
+int effectIndex = 0;
 
 bool isOn = 0;
 bool changedColor = 0;
 
 // Counters
 unsigned long currentTime = 0;
+// Button Press counters
 unsigned long mainButtonPressStart = 0;
 unsigned long auxButtonPressStart = 0;
+
+// LED speed counters
 unsigned long changeLEDStart = 0;
 int currentLED = 0;
+
+// Pulse Effect variables
+unsigned long lastPulseCounter = 0;
+int pulseSpeed = 20;
+bool pulseUp = true;
+int pulseBrightness = 75;
 
 
 // FUNCTIONS
@@ -88,6 +95,7 @@ void checkMainBTN() {
     // IF button is released AFTER 3+ seconds, change effect
     if (isOn && (millis() - mainButtonPressStart) >= 3000 && (millis() - mainButtonPressStart) < 5000) {
       Serial.println("Change Effect...");
+      changeSelectedEffect();
     }
 
     // Reset MAIN button counter on release
@@ -154,6 +162,19 @@ void checkAuxBTN() {
   }
 }
 
+// Change selected effect
+void changeSelectedEffect() {
+  effectIndex++;
+
+  // Reset index
+  if (effectIndex >= effectNumber) {
+    effectIndex = 0;
+  }
+
+  if (EFFECTS[effectIndex] != "PULSE")
+    FastLED.setBrightness(75);
+}
+
 // Change lightsaber color to preset
 void changeSelectedColor() {
 
@@ -161,7 +182,7 @@ void changeSelectedColor() {
 
   // Reset index
   if (ledIndex >= presetColors) {
-    ledIndex = 1;
+    ledIndex = 0;
   }
 
   // Select Color
@@ -225,13 +246,45 @@ void clashEffect() {
 
   // Decrease brightness
   FastLED.setBrightness(75);
-  
+
   // Turn LEDs back to selected color
   for (int i = 0; i < NUM_LEDS; i++) {
     leds[i] = color;
   }
   FastLED.show();
 }
+
+// Pulse
+void pulseEffect() {
+
+  // Change brightness after 20ms
+  if (millis() - lastPulseCounter >= pulseSpeed) {
+    lastPulseCounter = millis();
+
+    // Increase brightness until 255, then decrease until 0
+    if (pulseUp) {
+      pulseBrightness += 5;
+
+      if (pulseBrightness >= 255)
+        pulseUp = false;
+    } else {
+      pulseBrightness -= 5;
+
+      if (pulseBrightness <= 0)
+        pulseUp = true;
+    }
+
+    // Update brightness
+    for (int i = 0; i < NUM_LEDS; i++) {
+      leds[i] = color;
+      leds[i].fadeToBlackBy(255 - pulseBrightness);
+    }
+
+    FastLED.show();
+
+  }
+}
+
 
 // Turn ON saber
 void turnOnSaber() {
@@ -282,5 +335,16 @@ void loop() {
 
   if (isOn && !changedColor && EFFECTS[effectIndex] == "SOLID")
     changeColor();
+  
+  if (isOn) {
+    switch(effectIndex) {
+      case 1:
+        //Serial.println("Pulse");
+        pulseEffect();
+        break;
+      default:
+        break;
+    }
+  }
   
 }
