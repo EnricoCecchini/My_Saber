@@ -18,7 +18,13 @@ const int auxBTN_PIN = 4;
 int auxBTN_STATE;
 int auxBTN_STATE_PREV;
 
+// Define debounce time
+const unsigned long debounceTime = 50; // in milliseconds
+unsigned long lastMainButtonChangeTime = 0;
+unsigned long lastAuxButtonChangeTime = 0;
+
 // MPU6050
+// ARDUINO NANO PINS: SDA = A4, SCL = A5
 Adafruit_MPU6050 mpu;
 // Gyro
 const int rotationThreshold = 34;
@@ -29,6 +35,16 @@ int currentGyroY = 0;
 int prevGyroZ = 0;
 int currentGyroZ = 0;
 // Acceleration
+
+// Audio
+#include <SoftwareSerial.h>
+#include "DFRobotDFPlayerMini.h"
+
+static const uint8_t PIN_MP3_TX = 2; // D2: Connects to module's RX
+static const uint8_t PIN_MP3_RX = 3; // D3: Connects to module's TX
+SoftwareSerial softwareSerial(PIN_MP3_RX, PIN_MP3_TX); // RX, TX
+DFRobotDFPlayerMini dfplayer;
+bool speakerSetup = 0;
 
 // Color List
 String COLORS[] = {"RED", "BLUE", "GREEN", "PURPLE", "YELLOW", "WHITE", "TEAL", "ORANGE"};
@@ -46,6 +62,7 @@ bool changedColor = 0;
 
 // Counters
 unsigned long currentTime = 0;
+
 // Button Press counters
 unsigned long mainButtonPressStart = 0;
 unsigned long auxButtonPressStart = 0;
@@ -60,6 +77,9 @@ int pulseSpeed = 20;
 bool pulseUp = true;
 int pulseBrightness = 75;
 
+// Other variables
+bool setupComplete = 0;
+unsigned long int cTest = 0;
 
 // FUNCTIONS
 
@@ -68,30 +88,35 @@ int pulseBrightness = 75;
 void checkMainBTN() {
   // Update MAIN button state
   mainBTN_STATE_PREV = mainBTN_STATE;
-  mainBTN_STATE = digitalRead(mainBTN_PIN);
+  int newMainButtonState = digitalRead(mainBTN_PIN);
 
-  // IF MAIN button pressed
-  if (mainBTN_STATE == HIGH && mainBTN_STATE_PREV == HIGH) {
-    //Serial.println("Pressed");
+  // if (newMainButtonState != mainBTN_STATE && millis() - lastMainButtonChangeTime >= debounceTime) {
+    lastMainButtonChangeTime = millis();
+    mainBTN_STATE = newMainButtonState;
 
-    // Turn ON saber if MAIN button is pressed and saber is OFF
-    if (!isOn && mainButtonPressStart == 0) {
-      turnOnSaber();
-      isOn = 1;
-      Serial.println("Turning On...");  
+    // IF MAIN button pressed
+    if (mainBTN_STATE == HIGH && mainBTN_STATE_PREV == HIGH) {
+      //Serial.println("Pressed");
+
+      // Turn ON saber if MAIN button is pressed and saber is OFF
+      if (!isOn && mainButtonPressStart == 0) {
+        turnOnSaber();
+        isOn = 1;
+        Serial.println("Turning On...");  
+      }
+
+      // Start MAIN button counter
+      if (mainButtonPressStart == 0) {
+        mainButtonPressStart = millis();
+        Serial.println(String(mainButtonPressStart) + " Started");
+      }
+
+      // Print MAIN button press duration 
+      if (mainButtonPressStart > 0 && (millis() - mainButtonPressStart)%1000 == 0) {
+        Serial.println("MAIN: " + String((currentTime - mainButtonPressStart)/1000) + " seconds pressed");
+      }
     }
-
-    // Start MAIN button counter
-    if (mainButtonPressStart == 0) {
-      mainButtonPressStart = millis();
-      Serial.println(String(mainButtonPressStart) + " Started");
-    }
-
-    // Print MAIN button press duration 
-    if (mainButtonPressStart > 0 && (millis() - mainButtonPressStart)%1000 == 0) {
-      Serial.println("MAIN: " + String((currentTime - mainButtonPressStart)/1000) + " seconds pressed");
-    }
-  }
+  // }
 
   // IF MAIN button is pressed 5+ seconds, turn off saber
   if (isOn && (millis() - mainButtonPressStart) >= 5000 && mainButtonPressStart > 0) {
@@ -102,9 +127,7 @@ void checkMainBTN() {
   
   // Reset MAIN button counter when released
   if (mainBTN_STATE == LOW && mainBTN_STATE_PREV == LOW && mainButtonPressStart > 0) {
-    //Serial.println("Release...");
-
-    // IF button is released AFTER 3+ seconds, change effect
+    // IF MAIN button is released AFTER 3+ seconds, change effect
     if (isOn && (millis() - mainButtonPressStart) >= 3000 && (millis() - mainButtonPressStart) < 5000) {
       Serial.println("Change Effect...");
       changeSelectedEffect();
@@ -119,30 +142,33 @@ void checkMainBTN() {
 // Check AUX button if pressed
 void checkAuxBTN() {
   // Update AUX button state
-  auxBTN_STATE_PREV = auxBTN_STATE;
-  auxBTN_STATE = digitalRead(auxBTN_PIN);
+  auxBTN_STATE_PREV = mainBTN_STATE;
+  int newAuxButtonState = digitalRead(auxBTN_PIN);
 
-  // IF MAIN button pressed
-  if (auxBTN_STATE == HIGH && auxBTN_STATE_PREV == HIGH) {
-    //Serial.println("Pressed");
+  // if (newAuxButtonState != auxBTN_STATE && millis() - lastAuxButtonChangeTime >= debounceTime) {
+    lastAuxButtonChangeTime = millis();
+    auxBTN_STATE = newAuxButtonState;
 
-    // Alert saber is OFF if attempt to change color
-    if (!isOn && auxButtonPressStart == 0) {
-      Serial.println("Turn on saber to change color");  
-      // Play spark sound
+    // IF MAIN button pressed
+    if (auxBTN_STATE == HIGH && auxBTN_STATE_PREV == HIGH) {
+      // Alert saber is OFF if attempt to change color
+      if (!isOn && auxButtonPressStart == 0) {
+        Serial.println("Turn on saber to change color");  
+        // Play spark sound
+      }
+
+      // Start MAIN button counter
+      if (auxButtonPressStart == 0) {
+        auxButtonPressStart = millis();
+      }
+
+      // Print MAIN button press duration 
+      if (auxButtonPressStart > 0 && (millis() - auxButtonPressStart)%1000 == 0) {
+        Serial.println("AUX: " + String((millis() - auxButtonPressStart)/1000) + " seconds pressed");
+      }
     }
-
-    // Start MAIN button counter
-    if (auxButtonPressStart == 0) {
-      auxButtonPressStart = millis();
-    }
-
-    // Print MAIN button press duration 
-    if (auxButtonPressStart > 0 && (millis() - auxButtonPressStart)%1000 == 0) {
-      Serial.println("AUX: " + String((millis() - auxButtonPressStart)/1000) + " seconds pressed");
-    }
-  }
-
+  //}
+  
   // IF AUX button is pressed 3+ seconds, change saber color
   if (isOn && !changedColor && (millis() - auxButtonPressStart) >= 5000 && auxButtonPressStart > 0) {
     Serial.println("Changing color...");
@@ -150,14 +176,11 @@ void checkAuxBTN() {
     // Change color
     changeSelectedColor();
     currentLED = 0;
-
     changedColor = 1;
   }
   
   // Reset AUX button counter when released
   if (auxBTN_STATE == LOW && auxBTN_STATE_PREV == LOW && auxButtonPressStart > 0) {
-    //Serial.println("Release...");
-
     // IF button is released AFTER 3+ seconds, change effect
     if (isOn && (millis() - auxButtonPressStart) < 500) {
       Serial.println("Clash Effect...");
@@ -169,10 +192,11 @@ void checkAuxBTN() {
     // Reset MAIN button counter on release
     if (auxButtonPressStart != 0)
       auxButtonPressStart = 0;
-    
+
     changedColor = 0;
   }
 }
+
 
 // Change selected effect
 void changeSelectedEffect() {
@@ -244,6 +268,7 @@ void changeColor() {
 void clashEffect() {
 
   // Play Sound
+  //myDFPlayer.playFolder(1, 1);
 
   // Increase brightness
   FastLED.setBrightness(100);
@@ -300,26 +325,62 @@ void pulseEffect() {
 
 // Turn ON saber
 void turnOnSaber() {
+  isOn = 1;
+  dfplayer.play(1);
+  delay(500);
   for (int i = 0; i < NUM_LEDS; i++) {
     leds[i] = color;
-    //delay(10);
+    delay(10);
     FastLED.show();
   }
 }
 
 // Turn OFF saber
 void turnOffSaber() {
+  isOn = 0;
+  dfplayer.play(1);
+  delay(500);
   for (int i = NUM_LEDS-1; i >= 0; i--) {
     leds[i] = CRGB::Black;
-    //delay(10);
+    delay(10);
     FastLED.show();
   }
 }
 
+
 void setup() {
-  //Serial.begin(9600);
   Serial.begin(115200);
-  Serial.println("Starting...");
+
+  // Init USB serial port for debugging
+  Serial.begin(9600); // Init serial port for DFPlayer Mini
+  softwareSerial.begin(9600);// Start communication with DFPlayer Mini
+
+  // Start DFPlayer
+  if (dfplayer.begin(softwareSerial)) {
+    Serial.println("OK");
+    // Set volume to maximum (0 to 30).
+    dfplayer.volume(30);
+    // Play the first MP3 file on the SD card
+    //dfplayer.play(1);
+  } else {
+    Serial.println("Connecting to DFPlayer Mini failed!"); 
+  } 
+
+  // Start MPU6050;
+  Wire.begin();
+
+  Serial.println("Connecting to MPU6050...");
+
+  // Try to initialize MPU6050!
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050");
+    while(true) {
+      delay(10);
+    }
+  }
+  Serial.println("MPU6050 Found!");
+  // set gyro range to +- 500 deg/s
+  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
 
   pinMode(auxBTN_PIN, INPUT_PULLUP);
   pinMode(mainBTN_PIN, INPUT_PULLUP);
@@ -329,27 +390,18 @@ void setup() {
 
   FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(75);
-  
-  // Start MPU6050;
-  Wire.begin();
-  
-  // Try to initialize MPU6050!
-  if (!mpu.begin()) {
-    Serial.println("Failed to find Accelerometer");
-    while (1) {
-      delay(10);
-      if (mpu.begin())
-        break;
-    }
-  }
-  Serial.println("Accelerometer Found!");
 
-  // set gyro range to +- 500 deg/s
-  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
+  Serial.println("Setup Completed Succesfully!");
 
+  setupComplete = 1;
+  delay(1000);
 }
 
 void loop() {
+  // // dfplayer.play(1);
+  // // Serial.println("Playing");
+  // // delay(1000);
+
   currentTime = millis();
 
   // Gyro event
@@ -361,9 +413,12 @@ void loop() {
   currentGyroZ = g.gyro.z;
 
   // Print X, Y, Z rotation
-  if (abs(currentGyroX) > 20 )
+  //if (abs(currentGyroX) > 20 )
+  if (cTest >= 1000) {
     Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
-  //delay(100);
+    //delay(100);
+    cTest = 0;
+  }
 
   // Twist to turn ON/OFF
   if (abs(currentGyroX) >= rotationThreshold) {
@@ -380,27 +435,32 @@ void loop() {
       }
   }
 
-  // Detect movement
+  if (setupComplete) {
 
-  // Detect Clash
+    // Detect movement
 
-  // Check if MAIN button is pressed
-  checkMainBTN();
+    // Detect Clash
 
-  // Check if AUX button is pressed
-  checkAuxBTN();
+    // Check if MAIN button is pressed
+    //checkMainBTN();
 
-  if (isOn && !changedColor && EFFECTS[effectIndex] == "SOLID")
-    changeColor();
-  
-  if (isOn) {
-    switch(effectIndex) {
-      case 1:
-        //Serial.println("Pulse");
-        pulseEffect();
-        break;
-      default:
-        break;
-    }
-  } 
+    // Check if AUX button is pressed
+    //checkAuxBTN();
+
+    // if (isOn && !changedColor && EFFECTS[effectIndex] == "SOLID")
+    //   changeColor();
+    
+    // if (isOn) {
+    //   switch(effectIndex) {
+    //     case 1:
+    //       //Serial.println("Pulse");
+    //       pulseEffect();
+    //       break;
+    //     default:
+    //       break;
+    //   }
+    // } 
+  }
+
+  cTest += 1;
 }
