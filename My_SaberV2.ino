@@ -35,6 +35,9 @@ int currentGyroY = 0;
 int prevGyroZ = 0;
 int currentGyroZ = 0;
 // Acceleration
+int currentAccelX = 0;
+int currentAccelY = 0;
+int currentAccelZ = 0;
 
 // Audio
 #include <SoftwareSerial.h>
@@ -80,6 +83,7 @@ int pulseBrightness = 75;
 // Other variables
 bool setupComplete = 0;
 unsigned long int cTest = 0;
+bool colorChangeWarn = 0;
 
 // FUNCTIONS
 
@@ -253,6 +257,7 @@ void changeSelectedColor() {
 }
 
 void changeColor() {
+
   // Check if all blade is selected color
   if (currentLED < NUM_LEDS) {
     Serial.println("Changing LED color: " + String(COLORS[ledIndex]));
@@ -268,7 +273,8 @@ void changeColor() {
 void clashEffect() {
 
   // Play Sound
-  //myDFPlayer.playFolder(1, 1);
+  dfplayer.play(4);
+  delay(500);
 
   // Increase brightness
   FastLED.setBrightness(100);
@@ -338,7 +344,7 @@ void turnOnSaber() {
 // Turn OFF saber
 void turnOffSaber() {
   isOn = 0;
-  dfplayer.play(1);
+  dfplayer.play(5);
   delay(500);
   for (int i = NUM_LEDS-1; i >= 0; i--) {
     leds[i] = CRGB::Black;
@@ -382,8 +388,12 @@ void setup() {
   // set gyro range to +- 500 deg/s
   mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
 
+  //delay(1000);
+
   pinMode(auxBTN_PIN, INPUT_PULLUP);
   pinMode(mainBTN_PIN, INPUT_PULLUP);
+
+  //Serial.println("Setting up MAIN and AUX buttons");
 
   auxBTN_STATE = digitalRead(auxBTN_PIN);
   mainBTN_STATE = digitalRead(mainBTN_PIN);
@@ -398,11 +408,20 @@ void setup() {
 }
 
 void loop() {
-  // // dfplayer.play(1);
-  // // Serial.println("Playing");
-  // // delay(1000);
+  // Buttons
+  mainBTN_STATE_PREV = mainBTN_STATE;
+  auxBTN_STATE_PREV = auxBTN_STATE;
+  mainBTN_STATE = digitalRead(mainBTN_PIN);
+  auxBTN_STATE = digitalRead(auxBTN_PIN);
+  //dfplayer.play(1);
+  //Serial.println(dfplayer.readState());
+
+  //Serial.println("Main: " + String(mainBTN_STATE));
 
   currentTime = millis();
+
+  //Serial.println(currentTime - mainButtonPressStart);
+  Serial.println(currentTime - mainButtonPressStart);
 
   // Gyro event
   sensors_event_t a, g, t;
@@ -412,55 +431,183 @@ void loop() {
   currentGyroY = g.gyro.y;
   currentGyroZ = g.gyro.z;
 
-  // Print X, Y, Z rotation
-  //if (abs(currentGyroX) > 20 )
-  if (cTest >= 1000) {
-    Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
-    //delay(100);
-    cTest = 0;
-  }
+  currentAccelX = a.acceleration.x;
+  currentAccelY = a.acceleration.y;
+  currentAccelZ = a.acceleration.z;
 
   // Twist to turn ON/OFF
   if (abs(currentGyroX) >= rotationThreshold) {
       if (!isOn) {
-        Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
+        //Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
         Serial.println("Turning On with twist...");
         turnOnSaber();
         isOn = 1;
       } else {
-        Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
+        //Serial.println("X: " + String(currentGyroX) + " \tY: " + String(currentGyroY) + " \tZ: " + String(currentGyroZ));
         Serial.println("Turning On with twist...");
         turnOffSaber();
         isOn = 0;
       }
   }
+  
+  // Detect movement
 
-  if (setupComplete) {
+  // Detect Clash
 
-    // Detect movement
 
-    // Detect Clash
-
-    // Check if MAIN button is pressed
-    //checkMainBTN();
-
-    // Check if AUX button is pressed
-    //checkAuxBTN();
-
-    // if (isOn && !changedColor && EFFECTS[effectIndex] == "SOLID")
-    //   changeColor();
-    
-    // if (isOn) {
-    //   switch(effectIndex) {
-    //     case 1:
-    //       //Serial.println("Pulse");
-    //       pulseEffect();
-    //       break;
-    //     default:
-    //       break;
-    //   }
-    // } 
+  if (cTest >= 50) {
+    Serial.println(mainBTN_STATE + " " + mainBTN_STATE_PREV);
   }
+
+  // Button Handler
+  // If Saber is OFF and MAIN buttons is pressed, turn saber ON, else, start press counter
+  if (mainBTN_STATE != mainBTN_STATE_PREV && currentTime >= 3000) {
+    if (mainBTN_STATE == HIGH && !isOn) {
+      turnOnSaber();
+    } else if (mainBTN_STATE == HIGH && isOn && mainButtonPressStart < 100)
+      mainButtonPressStart = currentTime;
+    Serial.println("Pressed MAIN");
+  }
+
+  // If MAIN button is pressed for 5+ seconds, turn saber OFF, warn for color change after 3+ seconds
+  if (mainBTN_STATE == HIGH && isOn && (currentTime - mainButtonPressStart) >= 5000 && mainButtonPressStart > 100) {
+    Serial.println(currentTime - mainButtonPressStart);
+    turnOffSaber();
+  } else if (mainBTN_STATE == HIGH && isOn && (currentTime - mainButtonPressStart) >= 3000 && mainButtonPressStart > 100 && !colorChangeWarn) {
+    clashEffect();
+    clashEffect();
+    colorChangeWarn = 1;
+  }
+
+  // If MAIN button is released after 3+ seconds, but less than 5, change color, if button is held less than 1 second show clash effect 
+  if (mainBTN_STATE == LOW && (currentTime - mainButtonPressStart) >= 3000 && (currentTime - mainButtonPressStart) <= 5000 && mainButtonPressStart > 100) {
+    ledIndex++;
+
+    // Reset index
+    if (ledIndex >= presetColors) {
+      ledIndex = 0;
+    }
+
+    // Select Color
+    switch (ledIndex) {
+      case 1:
+        color = CRGB::Blue;
+        break;
+      case 2:
+        color = CRGB::Green;
+        break;
+      case 3:
+        color = CRGB::Purple;
+        break;
+      case 4:
+        color = CRGB::Yellow;
+        break;
+      case 5:
+        color = CRGB(255, 255, 255);
+        break;
+      case 6:
+        color = CRGB::Teal;
+        break;
+      case 7:
+        color = CRGB::Orange;
+        break;
+      default:
+        color = CRGB::Red;
+        break;
+    }
+
+    Serial.println(COLORS[ledIndex]);
+    currentLED = 0;
+    mainButtonPressStart = 0;
+    colorChangeWarn = 0;
+
+  } else if (mainBTN_STATE == LOW && (currentTime - mainButtonPressStart) <= 1000 && mainButtonPressStart > 100) {
+    clashEffect();
+    mainButtonPressStart = 0;
+  }
+
+  if (mainBTN_STATE == LOW && mainButtonPressStart >= 100) {
+    mainButtonPressStart = 0;
+    //colorChangeWarn = 0;
+  }
+
+  // if (auxBTN_STATE != auxBTN_STATE_PREV && currentTime >= 3000) {
+  //   if (auxBTN_STATE == HIGH && !isOn) {
+  //     turnOnSaber();
+  //     auxButtonPressStart = millis();
+  //   } else if (auxBTN_STATE == HIGH && isOn)
+  //     auxButtonPressStart = millis();
+  //   Serial.println("Pressed AUX");
+  // }
+
+  // if (auxBTN_STATE != auxBTN_STATE_PREV) {
+  //   if (auxBTN_STATE == HIGH && isOn && currentLED == 0) {
+  //     //changeSelectedColor();
+      
+  //     ledIndex++;
+
+  //     // Reset index
+  //     if (ledIndex >= presetColors) {
+  //       ledIndex = 0;
+  //     }
+
+  //     // Select Color
+  //     switch (ledIndex) {
+  //       case 1:
+  //         color = CRGB::Blue;
+  //         break;
+  //       case 2:
+  //         color = CRGB::Green;
+  //         break;
+  //       case 3:
+  //         color = CRGB::Purple;
+  //         break;
+  //       case 4:
+  //         color = CRGB::Yellow;
+  //         break;
+  //       case 5:
+  //         color = CRGB(255, 255, 255);
+  //         break;
+  //       case 6:
+  //         color = CRGB::Teal;
+  //         break;
+  //       case 7:
+  //         color = CRGB::Orange;
+  //         break;
+  //       default:
+  //         color = CRGB::Red;
+  //         break;
+  //     }
+
+  //     Serial.println(COLORS[ledIndex]);
+  //     currentLED = 0;
+  //   }
+  //   //Serial.println("Pressed AUX");
+  // }
+
+  // if (isOn)
+  //   changeColor();
+
+  // //Check if MAIN button is pressed
+  // checkMainBTN();
+
+  // // Check if AUX button is pressed
+  // checkAuxBTN();
+
+  // Change saber to selected color
+  if (isOn && !changedColor && EFFECTS[effectIndex] == "SOLID")
+    changeColor();
+  
+  // if (isOn) {
+  //   switch(effectIndex) {
+  //     case 1:
+  //       //Serial.println("Pulse");
+  //       pulseEffect();
+  //       break;
+  //     default:
+  //       break;
+  //   }
+  // } 
 
   cTest += 1;
 }
